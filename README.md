@@ -7,14 +7,10 @@ usage: newsparser.py [-h] [-s START_DATE_STRING] [-e END_DATE_STRING]
                      [-i START_INDEX]
 
 optional arguments:
-  -h, --help            show this help message and exit
-  -s START_DATE_STRING  Start date for parsing eg. mm/yyyy. Default is
-                        01/2002 - the first month in the news.ucsc.edu archives.
-  -e END_DATE_STRING    End date for parsing eg. mm/yyyy. Default is current
-                        month.
-  -i START_INDEX        The starting index for post and image IDs. Default is
-                        0 - important to avoid id conflicts if the wordpress site 
-                        already has content
+*  -h, --help            show this help message and exit
+*  -s START_DATE_STRING  Start date for parsing eg. mm/yyyy. Default is 01/2002 - the first month in the news.ucsc.edu archives.
+*  -e END_DATE_STRING    End date for parsing eg. mm/yyyy. Default is current month.
+*  -i START_INDEX        The starting index for post and image IDs. Default is 0 - important to avoid id conflicts if the wordpress site  already has content
 
 ## Design
 
@@ -26,7 +22,7 @@ The command line display is used to keep the user informed of what is currently 
 
 ### The Article Collector
 
-The article collector takes a start month and year as well as an end month and year for it's main method: get_articles().  The collector takes these dates and generates a list of URLs, one for each monthly news.ucsc.edu archive page, which use the pattern http://news.ucsc.edu/{year}/{month}.  BeautifulSoup is then used to scrape the individual article links from each archive page into a master list, which is then returned.
+The article collector takes a start month and year as well as an end month and year for it's main method: get_articles().  The collector takes these dates and generates a list of URLs, one for each monthly news.ucsc.edu archive page, which use the pattern "http://news.ucsc.edu/{year}/{month}".  BeautifulSoup is then used to scrape the individual article links from each archive page into a master list, which is then returned.
 
 ## The Article Scraper
 
