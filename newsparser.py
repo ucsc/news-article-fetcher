@@ -1,6 +1,4 @@
-from newssiteparser import ArticleCollector, NewsSiteParser, ArticleScraper
-import pprint
-import sys
+from newssiteparser import NewsSiteParser
 import argparse
 import re
 import datetime
@@ -21,7 +19,9 @@ def parse_month_year(date_string):
         print "Start and end dates must be of the form mm/yyyy"
         exit()
 
-    return matches[0]
+    month_year = matches[0]
+    month_year_tuple = (int(month_year[0]), int(month_year[1]))
+    return month_year_tuple
 
 
 parser = argparse.ArgumentParser()
@@ -32,7 +32,7 @@ parser.add_argument('-s', action='store', dest='start_date_string',
 parser.add_argument('-e', action='store', dest='end_date_string',
                     help='End date for parsing eg. mm/yyyy. Default is current month.')
 
-parser.add_argument('-i', action='store', dest='start_index', type='int',
+parser.add_argument('-i', action='store', dest='start_index', type=int,
                     help='The starting index for post and image IDs. Default is 0')
 
 results = parser.parse_args()
@@ -44,17 +44,21 @@ now = datetime.datetime.now()
 if results.start_date_string is not None:
     start_month_year = parse_month_year(results.start_date_string)
 else:
-    start_month_year = ('01', '2002')
+    start_month_year = (1, 2002)
 
 if results.end_date_string is not None:
     end_month_year = parse_month_year(results.end_date_string)
 else:
-    end_month_year = ("%02d" % (now.month,), str(now.year))
+    end_month_year = (now.month, now.year)
 
-if int(start_month_year[1]) > int(end_month_year[1]):
+print start_month_year
+print end_month_year
+
+if start_month_year[1] > end_month_year[1]:
     print "newsparser: Start date may not be after end date"
     exit()
-if int(start_month_year[1]) == int(end_month_year[1]) and int(start_month_year[0]) > int(end_month_year[0]):
+
+if start_month_year[1] == end_month_year[1] and start_month_year[0] > end_month_year[0]:
     print "newsparser: Start date may not be after end date"
     exit()
 
