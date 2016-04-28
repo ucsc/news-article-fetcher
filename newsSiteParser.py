@@ -618,8 +618,8 @@ class ArticleScraper(object):
             - subhead (the subtitle)
             - author (the user account the article will fall under)
             - article_author (the name that will display as the author)
-            - author_role
-            - author_telephone
+            - article_author_role
+            - article_author_telephone
             - message_from
             - message_to
             - raw_date (the date in yyyy-mm-dd format)
@@ -637,11 +637,10 @@ class ArticleScraper(object):
             layout: post
             title: "The Article Title"
             subhead: "An Optional Subtitle"
-            author:
-                - name: John Doe
-                  role: Writer
-                  telephone: 000-0000
+            author: John Doe
             article_author: Richard Smith
+            article_author_role: Writer
+            article_author_telephone: 000-0000
             campus_message:
                 - from: "Campus Administration"
                   to: "Student Body"

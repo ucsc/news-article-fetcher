@@ -24,8 +24,38 @@ The command line display is used to keep the user informed of what is currently 
 
 The article collector takes a start month and year as well as an end month and year for it's main method: get_articles().  The collector takes these dates and generates a list of URLs, one for each monthly news.ucsc.edu archive page, which use the pattern "http://news.ucsc.edu/{year}/{month}".  BeautifulSoup is then used to scrape the individual article links from each archive page into a master list, which is then returned.
 
-## The Article Scraper
+### The Article Scraper
 
+The article scraper takes a list of individual news.ucsc.edu article URLs as input.  It then iterates through each URL in this list, scraping it for the following information:
+
+* title
+* subhead - the article subtitle
+* author (the user account the article will fall under)
+* article_author (the name that will display as the author)
+* article_author_role
+* article_author_telephone
+* message_from
+* message_to
+* publication date
+* categories list
+* images dictionary of the form ( image_url:    - image_caption
+                                   				- image_height
+                                    			- image_width
+                                    			- image_id )
+- post_id
+- article_body (the main text of the article)
+
+Most of these are self explanatory, but a couple warrant a little more depth
+
+#### author, article_author, article_author_role, and article_author_telephone
+
+In a Wordpress import, the author field is used to either assign the article to an existing account, or is used to create a new user account for the author of the post.  However, not all of the writers who wrote for news.ucsc.edu are currently on the staff, and so shouldn't have accounts created for them.  The scraper uses a whitelist of current news.ucsc.edu writer staff to determine whether the author of an article should be placed into the author field, or whether the article should be placed under the generic "Public Information Office" account.  If the latter is the case, then the author's information is placed under article_author, which becomes a custom wordpress field that can then be used by a wordpress theme to display as the author without having to create an account for the writer. The role and telephone fields aren't standard wordpress fields, so they will be placed under custom fields regardless.
+
+#### message_from and message_to
+
+Sometimes, a news.ucsc.edu article will take the form of a message from a specific party to a specific audience, and won't have an author.  In this case, the article will have message_from and message_to fields.  These articles are placed under the "Public Information Office"  and the message fields become custom wordpress fields. A wordpress theme can then be used to display the message_from and message_to fields.
+
+#### the images dictionary
 
 
 The size of each import file is limited to roughly 5MB, because of timeout limitations with wordpress servers.
