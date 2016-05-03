@@ -55,7 +55,13 @@ In a Wordpress import, the author field is used to either assign the article to 
 
 Sometimes, a news.ucsc.edu article will take the form of a message from a specific party to a specific audience, and won't have an author.  In this case, the article will have message_from and message_to fields.  These articles are placed under the "Public Information Office"  and the message fields become custom wordpress fields. A wordpress theme can then be used to display the message_from and message_to fields.
 
-#### the images dictionary
+#### The images dictionary
+
+The images dictionary contains information about regular images found in articles.  This means that images in sidebar elements or manually inserted into the article text will not be scraped, and will remain in the text.  However, functionality is included to change the urls for images as well as other links from relative to absolute urls, so that they will still display in wordpress. The scraper collects the image url and caption, and assigns it with an ID.  It then downloads part of the image using the pillow image processing package to get the width and height of the image.  Each article has a dictionary of the images found in the article, where the key is the image url and the values are the four image attributes that were scraped.  This information is then used for two things: to create caption objects in the wordpress article text so that the images will automatically display in text, and to create import items in the wordpress import xml file so that wordpress will download the images from their original source and save them in its media database.  In order to generate the caption objects, the parser creates the urls that the images will have once imported into the wordpress media database according to the pattern that wordpress follows to name and save imported media.
+
+#### The post_id and image_id
+
+Wordpress assigns each imported item an ID. If wordpress finds that an item it is attempting to import has the same ID as an already existing item, it will not import it. This means that it is important to be able to make sure that the IDs that this parser assign to items to be imported can start at a number higher than any current existing ID, so that there will be no conflicts.
 
 
 The size of each import file is limited to roughly 5MB, because of timeout limitations with wordpress servers.
