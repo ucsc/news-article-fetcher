@@ -953,11 +953,11 @@ class ArticleScraper(object):
         fo.write('</rss>\n\n')
         fo.close()
 
-
-    def scrape_articles(self, article_list, screen=None):
+    def scrape_articles(self, article_list, markdown, screen=None):
         """
         Scrapes the urls in article_list and writes the resulting articles
         :param article_list: The list of article URLs to scrape
+        :param markdown: Boolean to generate markdown files or not
         :param screen: the CommandLineDisplay object to update the progress of the scraper with
         :return:
         """
@@ -980,7 +980,8 @@ class ArticleScraper(object):
 
                 articles_dictionary[article] = article_info
 
-                self.write_article(article_info)
+                if markdown:
+                    self.write_article(article_info)
 
             except Exception as e:
                 unscrapeable_article_dict[article] = str(e)
@@ -1018,20 +1019,21 @@ class NewsSiteParser(object):
             fo.write(key + ':\n')
             fo.write(value + '\n\n')
 
-    def run(self, start_month=1, start_year=2002, end_month=None, end_year=None):
+    def run(self, markdown, start_month=1, start_year=2002, end_month=None, end_year=None):
         """
         Runs the news.ucsc.edu article scraper with the given start and end dates
         :param start_month:
         :param start_year:
         :param end_month:
         :param end_year:
+        :param markdown
         :return:
         """
         self.screen.start_session()
 
         article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
 
-        diagnostic_dictionary = self.article_scraper.scrape_articles(article_list, screen=self.screen)
+        diagnostic_dictionary = self.article_scraper.scrape_articles(article_list, markdown, screen=self.screen)
 
         self.screen.end_session()
 

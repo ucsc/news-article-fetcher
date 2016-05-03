@@ -35,6 +35,9 @@ parser.add_argument('-e', action='store', dest='end_date_string',
 parser.add_argument('-i', action='store', dest='start_index', type=int,
                     help='The starting index for post and image IDs. Default is 0')
 
+parser.add_argument("--markdown", help="Generate Jekyll Markdown Files from Articles",
+                    action="store_true")
+
 results = parser.parse_args()
 
 start_index = results.start_index or 0
@@ -64,4 +67,4 @@ if start_month_year[1] == end_month_year[1] and start_month_year[0] > end_month_
 
 nsp = NewsSiteParser(start_index=start_index)
 
-nsp.run(start_month_year[0], start_month_year[1], end_month_year[0], end_month_year[1])
+nsp.run(results.markdown, start_month_year[0], start_month_year[1], end_month_year[0], end_month_year[1])

@@ -4,13 +4,14 @@ Python Scraper to convert news.ucsc.edu articles to wordpress import files.
 ##Usage
 
 usage: newsparser.py [-h] [-s START_DATE_STRING] [-e END_DATE_STRING]
-                     [-i START_INDEX]
+                     [-i START_INDEX] [--markdown]
 
 optional arguments:
 *  -h, --help            show this help message and exit
 *  -s START_DATE_STRING  Start date for parsing eg. mm/yyyy. Default is 01/2002 - the first month in the news.ucsc.edu archives.
 *  -e END_DATE_STRING    End date for parsing eg. mm/yyyy. Default is current month.
 *  -i START_INDEX        The starting index for post and image IDs. Default is 0 - important to avoid id conflicts if the wordpress site  already has content
+*  --markdown            Generate Jekyll Markdown Files from Articles
 
 ## Design
 
