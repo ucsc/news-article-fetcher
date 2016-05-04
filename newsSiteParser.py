@@ -611,7 +611,7 @@ class ArticleScraper(object):
             'post_id': str(self.get_next_index())
         }
 
-    def write_article(self, article_dict):
+    def write_article(self, article_url, article_dict):
         """
         Given a dictionary of article values:
             - title
@@ -653,7 +653,8 @@ class ArticleScraper(object):
             images:
             ---
 
-        :param article_info_dict:
+        :param article_dict:
+        :param article_url:
         :return:
         """
 
@@ -671,12 +672,18 @@ class ArticleScraper(object):
         message_to = article_dict['message_to'] or ''
         categories = article_dict['categories']
 
-        # Attempts to format the date correctly in order to predict urls for media urls uploaded to
-        # a locally hosted wordpress site.  If this can't be done, it means that the parser was
-        # unable to find an exact date for the article.  This means that the article will be
-        # ignored by Jekyll's import process, and it is therefore pointless to write it to a file
+        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
+        image_upload_string = 'wp-content/uploads/'
+
+        article_url_ending = self.get_url_ending(article_url)
+
         try:
-            formatted_date = datetime.datetime.strptime(raw_date, "%Y-%m-%d").strftime("%Y/%m/")
+            date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
+            image_url_date = date_object.strftime("%Y/%m/")
+
+            post_date_string = formatdate(time.mktime(date_object.timetuple()))
+            date_string_no_tz = date_object.strftime("%Y-%m-%d %H:%M:%S")
+
         except ValueError:
             raise NoDateException()
 
@@ -717,6 +724,12 @@ class ArticleScraper(object):
             else:
                 fo.write("    caption: \n")
 
+            fo.write('    permalink: \"' + upload_url + image_url_date + article_url_ending +
+                     '/attachment/' + image_id + '/\"\n')
+            fo.write('    post_date_string: \"' + post_date_string + '\"\n')
+            fo.write('    date_string_no_tz: \"' + date_string_no_tz + '\"\n')
+            fo.write('    _wp_attached_file: \"' + image_url_date + article_url_ending + '\"\n')
+
         fo.write("---\n\n")
 
         for image_url in article_dict['images_dictionary']:
@@ -728,14 +741,16 @@ class ArticleScraper(object):
             image_id = values_dict['image_id']
 
             url_ending = self.get_url_ending(image_url)
+            hacky_url_ending = url_ending
+            hacky_url_ending = hacky_url_ending.replace("%", "")
 
             fo.write("[caption id=\"attachment_" +
                      image_id + "\" align=\"alignright\" width=\"" + image_width +
-                     "\"]<a href=\"http://dev-ucsc-news.pantheonsite.io/wp-content/uploads/" +
-                     formatted_date + url_ending + "\">"
+                     "\"]<a href=\"" + upload_url +
+                     image_url_date + hacky_url_ending + "\">"
                      "<img class=\"size-full wp-image-" + image_id + "\" "
-                     "src=\"http://dev-ucsc-news.pantheonsite.io/wp-content/uploads/" +
-                     formatted_date + url_ending +
+                     "src=\"" + upload_url +
+                     image_url_date + hacky_url_ending +
                      "\" alt=\"" + image_caption + "\" width=\"" + image_width +
                      "\" height=\"" + image_height + "\" /></a>" + image_caption +
                      "[/caption]\n")
@@ -755,6 +770,10 @@ class ArticleScraper(object):
         import_file_num = 0
 
         five_megabytes = 5242880
+
+        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
+
+        image_upload_string = 'wp-content/uploads/'
 
         fo = open('wordpress-news-site-scraper-import-' + str(import_file_num) + '.xml', "w")
         fo.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -809,6 +828,7 @@ class ArticleScraper(object):
             message_to = article_dict['message_to']
             categories = article_dict['categories']
             url_slug = self.get_url_slug(article_url)
+            article_url_ending = self.get_url_ending(article_url)
 
             try:
                 date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
@@ -845,10 +865,10 @@ class ArticleScraper(object):
 
                 fo.write("[caption id=\"attachment_" +
                          image_id + "\" align=\"alignright\" width=\"" + image_width +
-                         "\"]<a href=\"http://dev-ucsc-news.pantheonsite.io/wp-content/uploads/" +
+                         "\"]<a href=\"" + upload_url + image_upload_string +
                          image_url_date + hacky_url_ending + "\">"
                          "<img class=\"size-full wp-image-" + image_id + "\" "
-                         "src=\"http://dev-ucsc-news.pantheonsite.io/wp-content/uploads/" +
+                         "src=\"" + upload_url + image_upload_string +
                          image_url_date + hacky_url_ending +
                          "\" alt=\"" + image_caption + "\" width=\"" + image_width +
                          "\" height=\"" + image_height + "\" /></a>" + image_caption +
@@ -924,10 +944,14 @@ class ArticleScraper(object):
 
                 image_caption = values_dict['image_caption'] or ""
                 image_id = values_dict['image_id']
+                url_ending = self.get_url_ending(image_url)
+                hacky_url_ending = url_ending
+                hacky_url_ending = hacky_url_ending.replace("%", "")
 
                 fo.write('        <item>\n')
                 fo.write('          <title>' + image_id + '</title>\n')
-                fo.write('          <link></link>\n')
+                fo.write('          <link>' + upload_url + image_url_date + article_url_ending +
+                         '/attachment/' + image_id + '/</link>\n')
                 fo.write('          <pubDate>' + post_date_string + '</pubDate>\n')
                 fo.write('          <dc:creator><![CDATA[' + author + ']]></dc:creator>\n')
                 fo.write('          <guid isPermaLink="false">' + image_url + '</guid>\n')
@@ -947,6 +971,11 @@ class ArticleScraper(object):
                 fo.write('          <wp:post_password/>\n')
                 fo.write('          <wp:is_sticky>0</wp:is_sticky>\n')
                 fo.write('          <wp:attachment_url>' + image_url + '</wp:attachment_url>\n')
+                fo.write('          <wp:postmeta>\n')
+                fo.write('              <wp:meta_key><![CDATA[_wp_attached_file]]></wp:meta_key>\n')
+                fo.write('              <wp:meta_value><![CDATA[' + image_url_date +
+                         article_url_ending + ']]></wp:meta_value>\n')
+                fo.write('          </wp:postmeta>\n')
                 fo.write('        </item>\n\n\n')
 
         fo.write('\n  </channel>\n')
@@ -980,11 +1009,14 @@ class ArticleScraper(object):
 
                 articles_dictionary[article] = article_info
 
-                if markdown:
-                    self.write_article(article_info)
+                if markdown is True:
+                    self.write_article(article, article_info)
 
             except Exception as e:
                 unscrapeable_article_dict[article] = str(e)
+                screen.end_session()
+                print e
+                exit()
 
         self.write_wordpress_import_file(articles_dictionary)
 
