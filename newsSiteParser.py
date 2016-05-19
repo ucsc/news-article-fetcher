@@ -523,7 +523,7 @@ class ArticleScraper(object):
 
         return images_dictionary
 
-    def get_article_text(self, body):
+    def get_article_text(self, body, no_html=False):
         """
         Gets the article main text
         :param body:
@@ -531,15 +531,20 @@ class ArticleScraper(object):
         """
         raw_article_body = body.find("div", {"class": "article-body"})
 
-        if raw_article_body is not None:
-            self.zap_tag_contents(raw_article_body)
-            article_body = ''
-            for item in raw_article_body.contents:
-                article_body += str(item)
+        if no_html:
+            raw_article_body = raw_article_body.get_text()
+            raw_article_body = self.gremlin_zapper.zap_string(raw_article_body)
+            document = raw_article_body
         else:
-            article_body = ''
+            if raw_article_body is not None:
+                self.zap_tag_contents(raw_article_body)
+                article_body = ''
+                for item in raw_article_body.contents:
+                    article_body += str(item)
+            else:
+                article_body = ''
 
-        document, errors = tidy_fragment(article_body, options={'numeric-entities': 1})
+            document, errors = tidy_fragment(article_body, options={'numeric-entities': 1})
 
         return document
 
@@ -559,7 +564,7 @@ class ArticleScraper(object):
 
         return categories
 
-    def scrape_article(self, article_url):
+    def scrape_article(self, article_url, no_html=False):
         """
 
         :param article_url:
@@ -591,7 +596,7 @@ class ArticleScraper(object):
 
         file_name = date + '-' + slug + ".md"
 
-        article_body = self.get_article_text(body)
+        article_body = self.get_article_text(body, no_html)
 
         return {
             'file_name': file_name,
@@ -712,6 +717,11 @@ class ArticleScraper(object):
 
         fo.write("images:\n")
         for key in article_dict['images_dictionary']:
+
+            url_ending = self.get_url_ending(key)
+            hacky_url_ending = url_ending
+            hacky_url_ending = hacky_url_ending.replace("%", "")
+
             fo.write("  - file: " + key + "\n")
 
             values_dict = article_dict['images_dictionary'][key]
@@ -726,9 +736,7 @@ class ArticleScraper(object):
 
             fo.write('    permalink: \"' + upload_url + image_url_date + article_url_ending +
                      '/attachment/' + image_id + '/\"\n')
-            fo.write('    post_date_string: \"' + post_date_string + '\"\n')
-            fo.write('    date_string_no_tz: \"' + date_string_no_tz + '\"\n')
-            fo.write('    _wp_attached_file: \"' + image_url_date + article_url_ending + '\"\n')
+            fo.write('    _wp_attached_file: \"' + image_url_date + hacky_url_ending + '\"\n')
 
         fo.write("---\n\n")
 
@@ -974,13 +982,50 @@ class ArticleScraper(object):
                 fo.write('          <wp:postmeta>\n')
                 fo.write('              <wp:meta_key><![CDATA[_wp_attached_file]]></wp:meta_key>\n')
                 fo.write('              <wp:meta_value><![CDATA[' + image_url_date +
-                         article_url_ending + ']]></wp:meta_value>\n')
+                         hacky_url_ending + ']]></wp:meta_value>\n')
                 fo.write('          </wp:postmeta>\n')
                 fo.write('        </item>\n\n\n')
 
         fo.write('\n  </channel>\n')
         fo.write('</rss>\n\n')
         fo.close()
+
+    def get_articles_dict(self, article_list, screen=None):
+        """
+        Returns a dictionary of all the article dictionaries in the article_list
+        :param article_list:
+        :param screen:
+        :return:
+        """
+
+        num_urls = len(article_list)
+        current_url_num = 1
+        prog_percent = 0
+
+        unscrapeable_article_dict = dict()
+
+        articles_dictionary = dict()
+
+        for article in article_list:
+            if screen is not None:
+                screen.report_progress('Scraping Articles', 'Scraping Article', article, prog_percent)
+                prog_percent = int(((current_url_num + 0.0) / num_urls) * 100)
+                current_url_num += 1
+
+            try:
+                article_info = self.scrape_article(article, no_html=True)
+
+                # article_info['article_body'] = article_info['article_body'].get_text()
+
+                articles_dictionary[article] = article_info
+
+            except Exception as e:
+                unscrapeable_article_dict[article] = str(e)
+                # screen.end_session()
+                # print e
+                # exit()
+
+        return articles_dictionary
 
     def scrape_articles(self, article_list, markdown, screen=None):
         """
@@ -1014,9 +1059,9 @@ class ArticleScraper(object):
 
             except Exception as e:
                 unscrapeable_article_dict[article] = str(e)
-                screen.end_session()
-                print e
-                exit()
+                # screen.end_session()
+                # print e
+                # exit()
 
         self.write_wordpress_import_file(articles_dictionary)
 
@@ -1050,6 +1095,25 @@ class NewsSiteParser(object):
         for key, value in diagnostic_dictionary:
             fo.write(key + ':\n')
             fo.write(value + '\n\n')
+
+    def get_articles_dictionary(self, start_month=1, start_year=2002, end_month=None, end_year=None):
+        """
+        Returns an articles dictionary of all the articles in the given time period
+        :param start_month:
+        :param start_year:
+        :param end_month:
+        :param end_year:
+        :return:
+        """
+        self.screen.start_session()
+
+        article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
+
+        articles_dictionary = self.article_scraper.get_articles_dict(article_list, screen=self.screen)
+
+        self.screen.end_session()
+
+        return articles_dictionary
 
     def run(self, markdown, start_month=1, start_year=2002, end_month=None, end_year=None):
         """
