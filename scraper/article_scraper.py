@@ -460,7 +460,7 @@ class ArticleScraper(object):
 
         return images_dictionary
 
-    def get_article_text(self, body, no_html=False):
+    def get_article_text(self, body):
         """
         Gets the article main text
         :param body:
@@ -468,22 +468,23 @@ class ArticleScraper(object):
         """
         raw_article_body = body.find("div", {"class": "article-body"})
 
-        if no_html:
-            raw_article_body = raw_article_body.get_text()
-            raw_article_body = self.gremlin_zapper.zap_string(raw_article_body)
-            document = raw_article_body
+        article_body_no_html = raw_article_body
+
+        if article_body_no_html is not None:
+            article_body_no_html = article_body_no_html.get_text()
+            article_body_no_html = self.gremlin_zapper.zap_string(article_body_no_html)
+
+        if raw_article_body is not None:
+            self.zap_tag_contents(raw_article_body)
+            article_body = ''
+            for item in raw_article_body.contents:
+                article_body += str(item)
         else:
-            if raw_article_body is not None:
-                self.zap_tag_contents(raw_article_body)
-                article_body = ''
-                for item in raw_article_body.contents:
-                    article_body += str(item)
-            else:
-                article_body = ''
+            article_body = ''
 
-            document, errors = tidy_fragment(article_body, options={'numeric-entities': 1})
+        article_body, errors = tidy_fragment(article_body, options={'numeric-entities': 1})
 
-        return document
+        return article_body, article_body_no_html
 
     def get_categories(self, page_html):
         """
@@ -533,7 +534,7 @@ class ArticleScraper(object):
 
         file_name = date + '-' + slug + ".md"
 
-        article_body = self.get_article_text(body, no_html)
+        article_body, article_body_no_html = self.get_article_text(body)
 
         return {
             'file_name': file_name,
@@ -550,6 +551,7 @@ class ArticleScraper(object):
             'subhead': subhead,
             'images_dictionary': images_dictionary,
             'article_body': article_body,
+            'article_body_no_html': article_body_no_html,
             'post_id': str(self.get_next_index())
         }
 
@@ -927,48 +929,10 @@ class ArticleScraper(object):
         fo.write('</rss>\n\n')
         fo.close()
 
-    def get_articles_dict(self, article_list, screen=None):
-        """
-        Returns a dictionary of all the article dictionaries in the article_list
-        :param article_list:
-        :param screen:
-        :return:
-        """
-
-        num_urls = len(article_list)
-        current_url_num = 1
-        prog_percent = 0
-
-        unscrapeable_article_dict = dict()
-
-        articles_dictionary = dict()
-
-        for article in article_list:
-            if screen is not None:
-                screen.report_progress('Scraping Articles', 'Scraping Article', article, prog_percent)
-                prog_percent = int(((current_url_num + 0.0) / num_urls) * 100)
-                current_url_num += 1
-
-            try:
-                article_info = self.scrape_article(article, no_html=True)
-
-                # article_info['article_body'] = article_info['article_body'].get_text()
-
-                articles_dictionary[article] = article_info
-
-            except Exception as e:
-                unscrapeable_article_dict[article] = str(e)
-                # screen.end_session()
-                # print e
-                # exit()
-
-        return articles_dictionary
-
-    def scrape_articles(self, article_list, markdown, screen=None):
+    def scrape_articles(self, article_list, screen=None):
         """
         Scrapes the urls in article_list and writes the resulting articles
         :param article_list: The list of article URLs to scrape
-        :param markdown: Boolean to generate markdown files or not
         :param screen: the CommandLineDisplay object to update the progress of the scraper with
         :return:
         """
@@ -991,18 +955,13 @@ class ArticleScraper(object):
 
                 articles_dictionary[article] = article_info
 
-                if markdown is True:
-                    self.write_article(article, article_info)
-
             except Exception as e:
                 unscrapeable_article_dict[article] = str(e)
                 # screen.end_session()
                 # print e
                 # exit()
 
-        self.write_wordpress_import_file(articles_dictionary)
-
-        return unscrapeable_article_dict
+        return articles_dictionary, unscrapeable_article_dict
 
 
 class NewsSiteScraper(object):
@@ -1046,7 +1005,7 @@ class NewsSiteScraper(object):
 
         article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
 
-        articles_dictionary = self.article_scraper.get_articles_dict(article_list, screen=self.screen)
+        articles_dictionary, unscrapeable_dict = self.article_scraper.scrape_articles(article_list, screen=self.screen)
 
         self.screen.end_session()
 
@@ -1066,7 +1025,7 @@ class NewsSiteScraper(object):
 
         article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
 
-        diagnostic_dictionary = self.article_scraper.scrape_articles(article_list, markdown, screen=self.screen)
+        articles_dictionary, diagnostic_dict = self.article_scraper.scrape_articles(article_list, screen=self.screen)
 
         self.screen.end_session()
 
