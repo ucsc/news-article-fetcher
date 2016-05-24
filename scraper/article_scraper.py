@@ -161,7 +161,7 @@ class ArticleWriter(object):
     def __init__(self):
         self.utils = ArticleUtils()
 
-    def write_article(self, article_url, article_dict):
+    def write_markdown(self, article_url, article_dict):
         """
         Given a dictionary of article values:
             - title
@@ -312,11 +312,12 @@ class ArticleWriter(object):
         fo.write(article_dict['source_permalink'] + "\n")
         fo.close()
 
-    def write_wordpress_import_file(self, articles_dictionary):
+    def write_wordpress_import_file(self, articles_dictionary, markdown=False):
         """
         Takes a list of dictionaries with information about an article and
         creates a wordpress import files of maximum size 5MB
-        :param articles_list:
+        :param articles_dictionary:
+        :param markdown:
         :return:
         """
 
@@ -342,12 +343,13 @@ class ArticleWriter(object):
 
         for article_url, article_dict in articles_dictionary.iteritems():
 
+            if markdown:
+                self.write_markdown(article_url, article_dict)
+
             old_file_position = fo.tell()
             fo.seek(0, os.SEEK_END)
             size = fo.tell()
             fo.seek(old_file_position, os.SEEK_SET)
-
-            # size = os.fstat(fo.fileno()).st_size
 
             if size > five_megabytes:
                 import_file_num += 1
@@ -928,6 +930,7 @@ class NewsSiteScraper(object):
         self.screen = CommandLineDisplay()
         self.article_collector = ArticleCollector()
         self.article_scraper = ArticleScraper(start_index=start_index)
+        self.writer = ArticleWriter()
 
     def write_diagnostic_file(self, diagnostic_dictionary):
         """
@@ -963,7 +966,7 @@ class NewsSiteScraper(object):
 
         return articles_dictionary
 
-    def run(self, markdown, start_month=1, start_year=2002, end_month=None, end_year=None):
+    def get_wordpress_import(self, markdown, start_month=1, start_year=2002, end_month=None, end_year=None):
         """
         Runs the news.ucsc.edu article scraper with the given start and end dates
         :param start_month:
@@ -973,18 +976,13 @@ class NewsSiteScraper(object):
         :param markdown
         :return:
         """
-        self.screen.start_session()
 
         article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
 
-        articles_dictionary, diagnostic_dict = self.article_scraper.scrape_articles(article_list, screen=self.screen)
+        articles_dictionary = self.get_articles_dictionary()
 
-        self.screen.end_session()
+        print 'Writing Articles...'
 
-        print len(article_list)
-
-        print 'Writing diagnostic_info.txt...'
-
-        # self.write_diagnostic_file(diagnostic_dictionary)
+        self.writer.write_wordpress_import_file(articles_dictionary, markdown)
 
         print 'Done'

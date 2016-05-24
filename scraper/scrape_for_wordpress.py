@@ -67,4 +67,4 @@ if start_month_year[1] == end_month_year[1] and start_month_year[0] > end_month_
 
 nsp = NewsSiteScraper(start_index=start_index)
 
-nsp.run(results.markdown, start_month_year[0], start_month_year[1], end_month_year[0], end_month_year[1])
+nsp.get_wordpress_import(results.markdown, start_month_year[0], start_month_year[1], end_month_year[0], end_month_year[1])
