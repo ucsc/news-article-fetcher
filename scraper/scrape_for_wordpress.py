@@ -1,4 +1,4 @@
-from newssiteparser import NewsSiteParser
+from article_scraper import NewsSiteScraper
 import argparse
 import re
 import datetime
@@ -65,6 +65,6 @@ if start_month_year[1] == end_month_year[1] and start_month_year[0] > end_month_
     print "newsparser: Start date may not be after end date"
     exit()
 
-nsp = NewsSiteParser(start_index=start_index)
+nsp = NewsSiteScraper(start_index=start_index)
 
 nsp.run(results.markdown, start_month_year[0], start_month_year[1], end_month_year[0], end_month_year[1])

@@ -1,4 +1,4 @@
-from gremlinzapper import GremlinZapper
+from utils import GremlinZapper, CommandLineDisplay
 import bs4
 from bs4 import BeautifulSoup
 from unidecode import unidecode
@@ -7,7 +7,6 @@ import re
 import datetime
 import requests
 import pprint
-import curses
 import urllib
 import cStringIO
 from urlparse import urljoin
@@ -15,7 +14,6 @@ from tidylib import tidy_fragment
 import os
 import time
 from email.utils import formatdate
-import traceback
 
 
 class ContentNotHTMLException(Exception):
@@ -45,67 +43,6 @@ class BodyIsNoneException(Exception):
 class ImageException(Exception):
     def __init__(self, image_url):
         Exception.__init__(self, "Error getting height and width of image " + image_url)
-
-
-class CommandLineDisplay(object):
-    """
-    This class is used to display and update a progress bar on the command line
-    """
-
-    def __init__(self):
-        self.stdscr = None
-
-    def start_session(self):
-        """
-        Starts a Curses session
-        :return:
-        """
-        self.stdscr = curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-
-    def end_session(self):
-        """
-        Ends any active curses session
-        :return:
-        """
-        curses.echo()
-        curses.nocbreak()
-        curses.endwin()
-
-    def update_description(self, description, url):
-        """
-        Updates only the messages
-        :param description:
-        :param url:
-        :return:
-        """
-        self.stdscr.addstr(2, 0, "{0}: {1}".format(description, url))
-        self.stdscr.move(3, 0)
-        self.stdscr.clrtoeol()
-        self.stdscr.refresh()
-
-    def report_progress(self, header, description, url, progress_percent):
-        """
-        Updates progress bar and messages
-        :param header:
-        :param: description:
-        :param stdscr: the terminal screen object to write to
-        :param url: the url currently being processed
-        :param progress_percent: the percentage of articles that has been processed
-        :return:
-        """
-        self.stdscr.move(0, 0)
-        self.stdscr.clrtoeol()
-        self.stdscr.addstr(0, 0, "{0}".format(header))
-        self.stdscr.addstr(1, 0, "Total progress: [{1:50}] {0}%".
-                           format(progress_percent, "#" * (progress_percent / 2)))
-        self.stdscr.move(2, 0)
-        self.stdscr.clrtoeol()
-        self.stdscr.addstr(2, 0, "{0}: {1}".format(description, url))
-        self.stdscr.move(3, 0)
-        self.stdscr.clrtoeol()
-        self.stdscr.refresh()
 
 
 class ArticleCollector(object):
@@ -1068,7 +1005,7 @@ class ArticleScraper(object):
         return unscrapeable_article_dict
 
 
-class NewsSiteParser(object):
+class NewsSiteScraper(object):
     """
     Class that iterates through all the news archives of news.ucsc.edu and generates markdown files for them
     """
