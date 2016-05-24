@@ -1,14 +1,11 @@
-from utils import GremlinZapper, CommandLineDisplay
+from utils import GremlinZapper, CommandLineDisplay, ArticleUtils
 import bs4
 from bs4 import BeautifulSoup
 from unidecode import unidecode
-from PIL import Image
 import re
 import datetime
 import requests
 import pprint
-import urllib
-import cStringIO
 from urlparse import urljoin
 from tidylib import tidy_fragment
 import os
@@ -156,6 +153,388 @@ class ArticleCollector(object):
         return article_list
 
 
+class ArticleWriter(object):
+    """
+    Takes an articles_dictionary and generates a wordpress import file.  also generates jekyll
+    markdown files if specified to do so
+    """
+    def __init__(self):
+        self.utils = ArticleUtils()
+
+    def write_article(self, article_url, article_dict):
+        """
+        Given a dictionary of article values:
+            - title
+            - subhead (the subtitle)
+            - author (the user account the article will fall under)
+            - article_author (the name that will display as the author)
+            - article_author_role
+            - article_author_telephone
+            - message_from
+            - message_to
+            - raw_date (the date in yyyy-mm-dd format)
+            - categories list
+            - images dictionary ( image_url:    - image_caption
+                                                - image_height
+                                                - image_width
+                                                - image_id )
+            - post_id
+            - article_body (the main text of the article)
+
+        Creates a new file in the current directory with all data except article_body and date in YAML
+        metadata format:
+            ---
+            layout: post
+            title: "The Article Title"
+            subhead: "An Optional Subtitle"
+            author: John Doe
+            article_author: Richard Smith
+            article_author_role: Writer
+            article_author_telephone: 000-0000
+            campus_message:
+                - from: "Campus Administration"
+                  to: "Student Body"
+            post_id: 1
+            categories:
+              - name: Press Release
+                nicename: press-release
+              - name: Regular News
+                nicename: regular-news
+            images:
+            ---
+
+        :param article_dict:
+        :param article_url:
+        :return:
+        """
+
+        title = article_dict['title'] or ''
+        title = title.replace('"', "'")
+        subhead = article_dict['subhead'] or ''
+        subhead = subhead.replace('"', "'")
+        author = article_dict['author'] or ''
+        article_author = article_dict['article_author'] or ''
+        post_id = article_dict['post_id']
+        raw_date = article_dict['date']
+        article_author_telephone = article_dict['article_author_telephone'] or ''
+        article_author_title = article_dict['article_author_title'] or ''
+        message_from = article_dict['message_from'] or ''
+        message_to = article_dict['message_to'] or ''
+        categories = article_dict['categories']
+
+        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
+        image_upload_string = 'wp-content/uploads/'
+
+        article_url_ending = self.utils.get_url_ending(article_url)
+
+        try:
+            date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
+            image_url_date = date_object.strftime("%Y/%m/")
+
+            post_date_string = formatdate(time.mktime(date_object.timetuple()))
+            date_string_no_tz = date_object.strftime("%Y-%m-%d %H:%M:%S")
+
+        except ValueError:
+            raise NoDateException()
+
+        fo = open(article_dict['file_name'], "w")
+        fo.write("---\n")
+        fo.write("layout: post\n")
+        fo.write("title: \"" + title + "\"\n")
+        fo.write("subhead: \"" + subhead + "\"\n")
+
+        fo.write("author: " + author + "\n")
+        fo.write("article_author: " + article_author + "\n")
+        fo.write("article_author_role: " + article_author_title + "\n")
+        fo.write("article_author_telephone: " + article_author_telephone + "\n")
+
+        fo.write("campus_message:\n")
+        fo.write("    - from: \"" + message_from + "\"\n")
+        fo.write("      to: \"" + message_to + "\"\n")
+
+        fo.write("post_id: " + post_id + "\n")
+
+        fo.write("categories:\n")
+        for category_name in categories:
+            category_nicename = self.utils.get_nicename(category_name)
+            fo.write("  - name: " + category_name + "\n")
+            fo.write("    nicename: " + category_nicename + "\n")
+
+        fo.write("images:\n")
+        for key in article_dict['images_dictionary']:
+
+            url_ending = self.utils.get_url_ending(key)
+            hacky_url_ending = url_ending
+            hacky_url_ending = hacky_url_ending.replace("%", "")
+
+            fo.write("  - file: " + key + "\n")
+
+            values_dict = article_dict['images_dictionary'][key]
+            image_id = values_dict['image_id']
+
+            fo.write('    image_id: ' + image_id + '\n')
+            if values_dict['image_caption'] is not None:
+                replaced = values_dict['image_caption'].replace('"', "'")
+                fo.write("    caption: \"" + replaced + "\"\n")
+            else:
+                fo.write("    caption: \n")
+
+            fo.write('    permalink: \"' + upload_url + image_url_date + article_url_ending +
+                     '/attachment/' + image_id + '/\"\n')
+            fo.write('    _wp_attached_file: \"' + image_url_date + hacky_url_ending + '\"\n')
+
+        fo.write("---\n\n")
+
+        for image_url in article_dict['images_dictionary']:
+            values_dict = article_dict['images_dictionary'][image_url]
+
+            image_caption = values_dict['image_caption'] or ""
+            image_width = values_dict['image_width']
+            image_height = values_dict['image_height']
+            image_id = values_dict['image_id']
+
+            url_ending = self.utils.get_url_ending(image_url)
+            hacky_url_ending = url_ending
+            hacky_url_ending = hacky_url_ending.replace("%", "")
+
+            fo.write("[caption id=\"attachment_" +
+                     image_id + "\" align=\"alignright\" width=\"" + image_width +
+                     "\"]<a href=\"" + upload_url +
+                     image_url_date + hacky_url_ending + "\">"
+                     "<img class=\"size-full wp-image-" + image_id + "\" "
+                     "src=\"" + upload_url +
+                     image_url_date + hacky_url_ending +
+                     "\" alt=\"" + image_caption + "\" width=\"" + image_width +
+                     "\" height=\"" + image_height + "\" /></a>" + image_caption +
+                     "[/caption]\n")
+        fo.write(article_dict['article_body'])
+        fo.write("\n")
+        fo.write(article_dict['source_permalink'] + "\n")
+        fo.close()
+
+    def write_wordpress_import_file(self, articles_dictionary):
+        """
+        Takes a list of dictionaries with information about an article and
+        creates a wordpress import files of maximum size 5MB
+        :param articles_list:
+        :return:
+        """
+
+        import_file_num = 0
+
+        five_megabytes = 5242880
+
+        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
+
+        image_upload_string = 'wp-content/uploads/'
+
+        fo = open('wordpress-news-site-scraper-import-' + str(import_file_num) + '.xml', "w")
+        fo.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fo.write('<rss version="2.0"\n')
+        fo.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
+        fo.write('    xmlns:content="http://purl.org/rss/1.0/modules/content/"\n')
+        fo.write('    xmlns:wfw="http://wellformedweb.org/CommentAPI/"\n')
+        fo.write('    xmlns:dc="http://purl.org/dc/elements/1.1/"\n')
+        fo.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n\n')
+        fo.write('  <channel>\n\n')
+        fo.write('    <language>en-US</language>\n')
+        fo.write('    <wp:wxr_version>1.2</wp:wxr_version>\n\n\n')
+
+        for article_url, article_dict in articles_dictionary.iteritems():
+
+            old_file_position = fo.tell()
+            fo.seek(0, os.SEEK_END)
+            size = fo.tell()
+            fo.seek(old_file_position, os.SEEK_SET)
+
+            # size = os.fstat(fo.fileno()).st_size
+
+            if size > five_megabytes:
+                import_file_num += 1
+                fo.write('\n  </channel>\n')
+                fo.write('</rss>\n\n')
+                fo.close()
+                fo = open('wordpress-news-site-scraper-import-' + str(import_file_num) + '.xml', "w")
+                fo.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                fo.write('<rss version="2.0"\n')
+                fo.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
+                fo.write('    xmlns:content="http://purl.org/rss/1.0/modules/content/"\n')
+                fo.write('    xmlns:wfw="http://wellformedweb.org/CommentAPI/"\n')
+                fo.write('    xmlns:dc="http://purl.org/dc/elements/1.1/"\n')
+                fo.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n\n')
+                fo.write('  <channel>\n\n')
+                fo.write('    <language>en-US</language>\n')
+                fo.write('    <wp:wxr_version>1.2</wp:wxr_version>\n\n\n')
+
+            title = article_dict['title'] or ''
+            title = title.replace('"', "'")
+            subhead = article_dict['subhead']
+            if subhead is not None:
+                subhead = subhead.replace('"', "'")
+            author = article_dict['author'] or ''
+            article_author = article_dict['article_author']
+            post_id = article_dict['post_id']
+            raw_date = article_dict['date']
+            article_author_telephone = article_dict['article_author_telephone']
+            article_author_title = article_dict['article_author_title']
+            message_from = article_dict['message_from']
+            message_to = article_dict['message_to']
+            categories = article_dict['categories']
+            url_slug = self.utils.get_url_slug(article_url)
+            article_url_ending = self.utils.get_url_ending(article_url)
+
+            try:
+                date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
+                image_url_date = date_object.strftime("%Y/%m/")
+
+                post_date_string = formatdate(time.mktime(date_object.timetuple()))
+                date_string_no_tz = date_object.strftime("%Y-%m-%d %H:%M:%S")
+
+            except ValueError:
+                raise NoDateException()
+
+            fo.write('      <item>\n')
+            fo.write('        <title>' + title + '</title>\n')
+            fo.write('        <pubDate>' + post_date_string + '</pubDate>\n')
+            fo.write('        <wp:post_id>' + post_id + '</wp:post_id>\n')
+            fo.write('        <description></description> \n')
+            fo.write('        <content:encoded><![CDATA[')
+
+            for image_url in article_dict['images_dictionary']:
+                values_dict = article_dict['images_dictionary'][image_url]
+
+                # The hacky url ending is used because of a bug in the wordpress importer
+                # when media is imported from a url, any percent encoded characters
+                # are replaced with the encoding digits.  for example, any %20's in the
+                # url will become 20's in the media's url on the wordpress server
+                url_ending = self.utils.get_url_ending(image_url)
+                hacky_url_ending = url_ending
+                hacky_url_ending = hacky_url_ending.replace("%", "")
+
+                image_caption = values_dict['image_caption'] or ""
+                image_width = values_dict['image_width']
+                image_height = values_dict['image_height']
+                image_id = values_dict['image_id']
+
+                fo.write("[caption id=\"attachment_" +
+                         image_id + "\" align=\"alignright\" width=\"" + image_width +
+                         "\"]<a href=\"" + upload_url + image_upload_string +
+                         image_url_date + hacky_url_ending + "\">"
+                         "<img class=\"size-full wp-image-" + image_id + "\" "
+                         "src=\"" + upload_url + image_upload_string +
+                         image_url_date + hacky_url_ending +
+                         "\" alt=\"" + image_caption + "\" width=\"" + image_width +
+                         "\" height=\"" + image_height + "\" /></a>" + image_caption +
+                         "[/caption]\n")
+
+            fo.write(article_dict['article_body'] + '\n')
+            fo.write(article_dict['source_permalink'] + "\n]]></content:encoded>\n")
+
+            fo.write('        <excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
+            fo.write('        <dc:creator><![CDATA[' + author + ']]></dc:creator>\n')
+            fo.write('        <wp:post_date>' + date_string_no_tz + '</wp:post_date>\n')
+            fo.write('        <wp:post_date_gmt>' + date_string_no_tz + '</wp:post_date_gmt>\n')
+            fo.write('        <wp:comment_status>closed</wp:comment_status>\n')
+            fo.write('        <wp:ping_status>open</wp:ping_status>\n')
+            fo.write('        <wp:post_name>' + url_slug + '</wp:post_name>\n')
+            fo.write('        <wp:status>publish</wp:status>\n')
+            fo.write('        <wp:post_parent>0</wp:post_parent>\n')
+            fo.write('        <wp:menu_order>0</wp:menu_order>\n')
+            fo.write('        <wp:post_type>post</wp:post_type>\n')
+            fo.write('        <wp:post_password></wp:post_password>\n')
+            fo.write('        <wp:is_sticky>0</wp:is_sticky>\n\n')
+
+            for category_name in categories:
+                category_nicename = self.utils.get_nicename(category_name)
+                fo.write('        <category domain="category" nicename="' + category_nicename + '">'
+                         '<![CDATA[' + category_name + ']]></category>\n')
+
+            fo.write('        <wp:postmeta>\n')
+            fo.write('            <wp:meta_key><![CDATA[_edit_last]]></wp:meta_key>\n')
+            fo.write('            <wp:meta_value><![CDATA[1]]></wp:meta_value>\n')
+            fo.write('        </wp:postmeta>\n')
+
+            if subhead is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[subhead]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + subhead + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            if article_author is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[article_author]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + article_author + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            if article_author_title is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[article_author_title]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + article_author_title + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            if article_author_telephone is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[article_author_telephone]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + article_author_telephone + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            if message_from is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[message_from]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + message_from + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            if message_to is not None:
+                fo.write('        <wp:postmeta>\n')
+                fo.write('            <wp:meta_key><![CDATA[message_to]]></wp:meta_key>\n')
+                fo.write('            <wp:meta_value><![CDATA[' + message_to + ']]></wp:meta_value>\n')
+                fo.write('        </wp:postmeta>\n')
+
+            fo.write('      </item>\n\n\n')
+
+            for image_url in article_dict['images_dictionary']:
+                values_dict = article_dict['images_dictionary'][image_url]
+
+                image_caption = values_dict['image_caption'] or ""
+                image_id = values_dict['image_id']
+                url_ending = self.utils.get_url_ending(image_url)
+                hacky_url_ending = url_ending
+                hacky_url_ending = hacky_url_ending.replace("%", "")
+
+                fo.write('        <item>\n')
+                fo.write('          <title>' + image_id + '</title>\n')
+                fo.write('          <link>' + upload_url + image_url_date + article_url_ending +
+                         '/attachment/' + image_id + '/</link>\n')
+                fo.write('          <pubDate>' + post_date_string + '</pubDate>\n')
+                fo.write('          <dc:creator><![CDATA[' + author + ']]></dc:creator>\n')
+                fo.write('          <guid isPermaLink="false">' + image_url + '</guid>\n')
+                fo.write('          <description/>\n')
+                fo.write('          <content:encoded><![CDATA[]]></content:encoded>\n')
+                fo.write('          <excerpt:encoded><![CDATA[' + image_caption + ']]></excerpt:encoded>\n')
+                fo.write('          <wp:post_id>' + image_id + '</wp:post_id>\n')
+                fo.write('          <wp:post_date>' + date_string_no_tz + '</wp:post_date>\n')
+                fo.write('          <wp:post_date_gmt>' + date_string_no_tz + '</wp:post_date_gmt>\n')
+                fo.write('          <wp:comment_status>closed</wp:comment_status>\n')
+                fo.write('          <wp:ping_status>closed</wp:ping_status>\n')
+                fo.write('          <wp:post_name></wp:post_name>\n')
+                fo.write('          <wp:status>inherit</wp:status>\n')
+                fo.write('          <wp:post_parent>' + post_id + '</wp:post_parent>\n')
+                fo.write('          <wp:menu_order>0</wp:menu_order>\n')
+                fo.write('          <wp:post_type>attachment</wp:post_type>\n')
+                fo.write('          <wp:post_password/>\n')
+                fo.write('          <wp:is_sticky>0</wp:is_sticky>\n')
+                fo.write('          <wp:attachment_url>' + image_url + '</wp:attachment_url>\n')
+                fo.write('          <wp:postmeta>\n')
+                fo.write('              <wp:meta_key><![CDATA[_wp_attached_file]]></wp:meta_key>\n')
+                fo.write('              <wp:meta_value><![CDATA[' + image_url_date +
+                         hacky_url_ending + ']]></wp:meta_value>\n')
+                fo.write('          </wp:postmeta>\n')
+                fo.write('        </item>\n\n\n')
+
+        fo.write('\n  </channel>\n')
+        fo.write('</rss>\n\n')
+        fo.close()
+
 class ArticleScraper(object):
     """
     Takes a list of news.ucsc.edu articles, scrapes and writes them to files so that they can be used
@@ -168,9 +547,8 @@ class ArticleScraper(object):
         :return:
         """
         self.gremlin_zapper = GremlinZapper()
+        self.utils = ArticleUtils()
         self.object_index = start_index
-        self.article_slug_regex = re.compile(r".*\/([^\/\.]+)(?:.[^\.\/]+$)*")
-        self.article_ending_regex = re.compile(r".*\/([^\/]+)")
         self.date_regex = re.compile(r"[A-Za-z]+\s*\d{1,2}\,\s*\d{4}")
         self.word_regex = re.compile(r"([^\s\n\r\t]+)")
         self.author_regex = re.compile(r"By\s*(.+)")
@@ -217,32 +595,6 @@ class ArticleScraper(object):
                 elif isinstance(tag.contents[x], bs4.element.Tag):
                     self.zap_tag_contents(tag.contents[x])
 
-    def get_nicename(self, name):
-        """
-        Returns the nicename version of a string; converts to lowercase and replaces
-        spaces with dashes
-        :param name:
-        :return:
-        """
-        name = name.replace(' ', '-')
-        name = name.lower()
-
-        return name
-
-    def get_image_dimens(self, image_url):
-        """
-        Uses the PIL Pillow fork to get the width and height of an image from a url
-        :param image_url: the url of the image to get the dimensions for
-        :return: height, width
-        """
-        try:
-            url_connection = urllib.urlopen(image_url)
-            image_file = cStringIO.StringIO(url_connection.read())
-            im = Image.open(image_file)
-            return im.size
-        except IOError as e:
-            raise ImageException(image_url)
-
     def get_soup_from_url(self, page_url):
         """
         Takes the url of a web page and returns a BeautifulSoup Soup object representation
@@ -257,32 +609,6 @@ class ArticleScraper(object):
         if r.headers['content-type'] != 'text/html; charset=UTF-8':
             raise ContentNotHTMLException()
         return BeautifulSoup(r.content, 'lxml')
-
-    def get_url_slug(self, page_url):
-        """
-        Returns the last section of a url eg. 'posts' for 'wordpress.com/posts.html'
-        :raises Exception: if the regex is unable to locate the url slug
-        :param page_url: the page url
-        :return: the url slug
-        """
-        slug_match = self.article_slug_regex.findall(page_url)
-        if slug_match and len(slug_match) == 1:
-            return slug_match[0]
-        else:
-            raise Exception("unable to find slug for article: " + page_url + "\n")
-
-    def get_url_ending(self, page_url):
-        """
-        Gets the url slug plus the file ending eg:
-        www.example.com/example.html -> example.html
-        :param page_url: the url to get the ending from
-        :return: the url ending
-        """
-        slug_match = self.article_ending_regex.findall(page_url)
-        if slug_match and len(slug_match) == 1:
-            return slug_match[0]
-        else:
-            raise Exception("unable to find ending for article: " + page_url + "\n")
 
     def get_author_info(self, body):
         """
@@ -424,7 +750,7 @@ class ArticleScraper(object):
                 else:
                     image_caption = ''
 
-                image_width, image_height = self.get_image_dimens(image_src)
+                image_width, image_height = self.utils.get_image_dimens(image_src)
                 if 'height' in image_tag:
                     image_height = image_tag['height']
                 if 'width' in image_tag:
@@ -528,7 +854,7 @@ class ArticleScraper(object):
 
         message_from, message_to = self.get_campus_message_info(body)
 
-        slug = self.get_url_slug(article_url)
+        slug = self.utils.get_url_slug(article_url)
 
         source_permalink = "<p><a href=\"" + article_url + "\" title=\"Permalink to " + slug + "\">Source</a></p>"
 
@@ -554,380 +880,6 @@ class ArticleScraper(object):
             'article_body_no_html': article_body_no_html,
             'post_id': str(self.get_next_index())
         }
-
-    def write_article(self, article_url, article_dict):
-        """
-        Given a dictionary of article values:
-            - title
-            - subhead (the subtitle)
-            - author (the user account the article will fall under)
-            - article_author (the name that will display as the author)
-            - article_author_role
-            - article_author_telephone
-            - message_from
-            - message_to
-            - raw_date (the date in yyyy-mm-dd format)
-            - categories list
-            - images dictionary ( image_url:    - image_caption
-                                                - image_height
-                                                - image_width
-                                                - image_id )
-            - post_id
-            - article_body (the main text of the article)
-
-        Creates a new file in the current directory with all data except article_body and date in YAML
-        metadata format:
-            ---
-            layout: post
-            title: "The Article Title"
-            subhead: "An Optional Subtitle"
-            author: John Doe
-            article_author: Richard Smith
-            article_author_role: Writer
-            article_author_telephone: 000-0000
-            campus_message:
-                - from: "Campus Administration"
-                  to: "Student Body"
-            post_id: 1
-            categories:
-              - name: Press Release
-                nicename: press-release
-              - name: Regular News
-                nicename: regular-news
-            images:
-            ---
-
-        :param article_dict:
-        :param article_url:
-        :return:
-        """
-
-        title = article_dict['title'] or ''
-        title = title.replace('"', "'")
-        subhead = article_dict['subhead'] or ''
-        subhead = subhead.replace('"', "'")
-        author = article_dict['author'] or ''
-        article_author = article_dict['article_author'] or ''
-        post_id = article_dict['post_id']
-        raw_date = article_dict['date']
-        article_author_telephone = article_dict['article_author_telephone'] or ''
-        article_author_title = article_dict['article_author_title'] or ''
-        message_from = article_dict['message_from'] or ''
-        message_to = article_dict['message_to'] or ''
-        categories = article_dict['categories']
-
-        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
-        image_upload_string = 'wp-content/uploads/'
-
-        article_url_ending = self.get_url_ending(article_url)
-
-        try:
-            date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
-            image_url_date = date_object.strftime("%Y/%m/")
-
-            post_date_string = formatdate(time.mktime(date_object.timetuple()))
-            date_string_no_tz = date_object.strftime("%Y-%m-%d %H:%M:%S")
-
-        except ValueError:
-            raise NoDateException()
-
-        fo = open(article_dict['file_name'], "w")
-        fo.write("---\n")
-        fo.write("layout: post\n")
-        fo.write("title: \"" + title + "\"\n")
-        fo.write("subhead: \"" + subhead + "\"\n")
-
-        fo.write("author: " + author + "\n")
-        fo.write("article_author: " + article_author + "\n")
-        fo.write("article_author_role: " + article_author_title + "\n")
-        fo.write("article_author_telephone: " + article_author_telephone + "\n")
-
-        fo.write("campus_message:\n")
-        fo.write("    - from: \"" + message_from + "\"\n")
-        fo.write("      to: \"" + message_to + "\"\n")
-
-        fo.write("post_id: " + post_id + "\n")
-
-        fo.write("categories:\n")
-        for category_name in categories:
-            category_nicename = self.get_nicename(category_name)
-            fo.write("  - name: " + category_name + "\n")
-            fo.write("    nicename: " + category_nicename + "\n")
-
-        fo.write("images:\n")
-        for key in article_dict['images_dictionary']:
-
-            url_ending = self.get_url_ending(key)
-            hacky_url_ending = url_ending
-            hacky_url_ending = hacky_url_ending.replace("%", "")
-
-            fo.write("  - file: " + key + "\n")
-
-            values_dict = article_dict['images_dictionary'][key]
-            image_id = values_dict['image_id']
-
-            fo.write('    image_id: ' + image_id + '\n')
-            if values_dict['image_caption'] is not None:
-                replaced = values_dict['image_caption'].replace('"', "'")
-                fo.write("    caption: \"" + replaced + "\"\n")
-            else:
-                fo.write("    caption: \n")
-
-            fo.write('    permalink: \"' + upload_url + image_url_date + article_url_ending +
-                     '/attachment/' + image_id + '/\"\n')
-            fo.write('    _wp_attached_file: \"' + image_url_date + hacky_url_ending + '\"\n')
-
-        fo.write("---\n\n")
-
-        for image_url in article_dict['images_dictionary']:
-            values_dict = article_dict['images_dictionary'][image_url]
-
-            image_caption = values_dict['image_caption'] or ""
-            image_width = values_dict['image_width']
-            image_height = values_dict['image_height']
-            image_id = values_dict['image_id']
-
-            url_ending = self.get_url_ending(image_url)
-            hacky_url_ending = url_ending
-            hacky_url_ending = hacky_url_ending.replace("%", "")
-
-            fo.write("[caption id=\"attachment_" +
-                     image_id + "\" align=\"alignright\" width=\"" + image_width +
-                     "\"]<a href=\"" + upload_url +
-                     image_url_date + hacky_url_ending + "\">"
-                     "<img class=\"size-full wp-image-" + image_id + "\" "
-                     "src=\"" + upload_url +
-                     image_url_date + hacky_url_ending +
-                     "\" alt=\"" + image_caption + "\" width=\"" + image_width +
-                     "\" height=\"" + image_height + "\" /></a>" + image_caption +
-                     "[/caption]\n")
-        fo.write(article_dict['article_body'])
-        fo.write("\n")
-        fo.write(article_dict['source_permalink'] + "\n")
-        fo.close()
-
-    def write_wordpress_import_file(self, articles_dictionary):
-        """
-        Takes a list of dictionaries with information about an article and
-        creates a wordpress import files of maximum size 5MB
-        :param articles_list:
-        :return:
-        """
-
-        import_file_num = 0
-
-        five_megabytes = 5242880
-
-        upload_url = 'http://dev-ucsc-news.pantheonsite.io/'
-
-        image_upload_string = 'wp-content/uploads/'
-
-        fo = open('wordpress-news-site-scraper-import-' + str(import_file_num) + '.xml', "w")
-        fo.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fo.write('<rss version="2.0"\n')
-        fo.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
-        fo.write('    xmlns:content="http://purl.org/rss/1.0/modules/content/"\n')
-        fo.write('    xmlns:wfw="http://wellformedweb.org/CommentAPI/"\n')
-        fo.write('    xmlns:dc="http://purl.org/dc/elements/1.1/"\n')
-        fo.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n\n')
-        fo.write('  <channel>\n\n')
-        fo.write('    <language>en-US</language>\n')
-        fo.write('    <wp:wxr_version>1.2</wp:wxr_version>\n\n\n')
-
-        for article_url, article_dict in articles_dictionary.iteritems():
-
-            old_file_position = fo.tell()
-            fo.seek(0, os.SEEK_END)
-            size = fo.tell()
-            fo.seek(old_file_position, os.SEEK_SET)
-
-            # size = os.fstat(fo.fileno()).st_size
-
-            if size > five_megabytes:
-                import_file_num += 1
-                fo.write('\n  </channel>\n')
-                fo.write('</rss>\n\n')
-                fo.close()
-                fo = open('wordpress-news-site-scraper-import-' + str(import_file_num) + '.xml', "w")
-                fo.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-                fo.write('<rss version="2.0"\n')
-                fo.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
-                fo.write('    xmlns:content="http://purl.org/rss/1.0/modules/content/"\n')
-                fo.write('    xmlns:wfw="http://wellformedweb.org/CommentAPI/"\n')
-                fo.write('    xmlns:dc="http://purl.org/dc/elements/1.1/"\n')
-                fo.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n\n')
-                fo.write('  <channel>\n\n')
-                fo.write('    <language>en-US</language>\n')
-                fo.write('    <wp:wxr_version>1.2</wp:wxr_version>\n\n\n')
-
-            title = article_dict['title'] or ''
-            title = title.replace('"', "'")
-            subhead = article_dict['subhead']
-            if subhead is not None:
-                subhead = subhead.replace('"', "'")
-            author = article_dict['author'] or ''
-            article_author = article_dict['article_author']
-            post_id = article_dict['post_id']
-            raw_date = article_dict['date']
-            article_author_telephone = article_dict['article_author_telephone']
-            article_author_title = article_dict['article_author_title']
-            message_from = article_dict['message_from']
-            message_to = article_dict['message_to']
-            categories = article_dict['categories']
-            url_slug = self.get_url_slug(article_url)
-            article_url_ending = self.get_url_ending(article_url)
-
-            try:
-                date_object = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
-                image_url_date = date_object.strftime("%Y/%m/")
-
-                post_date_string = formatdate(time.mktime(date_object.timetuple()))
-                date_string_no_tz = date_object.strftime("%Y-%m-%d %H:%M:%S")
-
-            except ValueError:
-                raise NoDateException()
-
-            fo.write('      <item>\n')
-            fo.write('        <title>' + title + '</title>\n')
-            fo.write('        <pubDate>' + post_date_string + '</pubDate>\n')
-            fo.write('        <wp:post_id>' + post_id + '</wp:post_id>\n')
-            fo.write('        <description></description> \n')
-            fo.write('        <content:encoded><![CDATA[')
-
-            for image_url in article_dict['images_dictionary']:
-                values_dict = article_dict['images_dictionary'][image_url]
-
-                # The hacky url ending is used because of a bug in the wordpress importer
-                # when media is imported from a url, any percent encoded characters
-                # are replaced with the encoding digits.  for example, any %20's in the
-                # url will become 20's in the media's url on the wordpress server
-                url_ending = self.get_url_ending(image_url)
-                hacky_url_ending = url_ending
-                hacky_url_ending = hacky_url_ending.replace("%", "")
-
-                image_caption = values_dict['image_caption'] or ""
-                image_width = values_dict['image_width']
-                image_height = values_dict['image_height']
-                image_id = values_dict['image_id']
-
-                fo.write("[caption id=\"attachment_" +
-                         image_id + "\" align=\"alignright\" width=\"" + image_width +
-                         "\"]<a href=\"" + upload_url + image_upload_string +
-                         image_url_date + hacky_url_ending + "\">"
-                         "<img class=\"size-full wp-image-" + image_id + "\" "
-                         "src=\"" + upload_url + image_upload_string +
-                         image_url_date + hacky_url_ending +
-                         "\" alt=\"" + image_caption + "\" width=\"" + image_width +
-                         "\" height=\"" + image_height + "\" /></a>" + image_caption +
-                         "[/caption]\n")
-
-            fo.write(article_dict['article_body'] + '\n')
-            fo.write(article_dict['source_permalink'] + "\n]]></content:encoded>\n")
-
-            fo.write('        <excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
-            fo.write('        <dc:creator><![CDATA[' + author + ']]></dc:creator>\n')
-            fo.write('        <wp:post_date>' + date_string_no_tz + '</wp:post_date>\n')
-            fo.write('        <wp:post_date_gmt>' + date_string_no_tz + '</wp:post_date_gmt>\n')
-            fo.write('        <wp:comment_status>closed</wp:comment_status>\n')
-            fo.write('        <wp:ping_status>open</wp:ping_status>\n')
-            fo.write('        <wp:post_name>' + url_slug + '</wp:post_name>\n')
-            fo.write('        <wp:status>publish</wp:status>\n')
-            fo.write('        <wp:post_parent>0</wp:post_parent>\n')
-            fo.write('        <wp:menu_order>0</wp:menu_order>\n')
-            fo.write('        <wp:post_type>post</wp:post_type>\n')
-            fo.write('        <wp:post_password></wp:post_password>\n')
-            fo.write('        <wp:is_sticky>0</wp:is_sticky>\n\n')
-
-            for category_name in categories:
-                category_nicename = self.get_nicename(category_name)
-                fo.write('        <category domain="category" nicename="' + category_nicename + '">'
-                         '<![CDATA[' + category_name + ']]></category>\n')
-
-            fo.write('        <wp:postmeta>\n')
-            fo.write('            <wp:meta_key><![CDATA[_edit_last]]></wp:meta_key>\n')
-            fo.write('            <wp:meta_value><![CDATA[1]]></wp:meta_value>\n')
-            fo.write('        </wp:postmeta>\n')
-
-            if subhead is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[subhead]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + subhead + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            if article_author is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[article_author]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + article_author + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            if article_author_title is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[article_author_title]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + article_author_title + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            if article_author_telephone is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[article_author_telephone]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + article_author_telephone + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            if message_from is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[message_from]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + message_from + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            if message_to is not None:
-                fo.write('        <wp:postmeta>\n')
-                fo.write('            <wp:meta_key><![CDATA[message_to]]></wp:meta_key>\n')
-                fo.write('            <wp:meta_value><![CDATA[' + message_to + ']]></wp:meta_value>\n')
-                fo.write('        </wp:postmeta>\n')
-
-            fo.write('      </item>\n\n\n')
-
-            for image_url in article_dict['images_dictionary']:
-                values_dict = article_dict['images_dictionary'][image_url]
-
-                image_caption = values_dict['image_caption'] or ""
-                image_id = values_dict['image_id']
-                url_ending = self.get_url_ending(image_url)
-                hacky_url_ending = url_ending
-                hacky_url_ending = hacky_url_ending.replace("%", "")
-
-                fo.write('        <item>\n')
-                fo.write('          <title>' + image_id + '</title>\n')
-                fo.write('          <link>' + upload_url + image_url_date + article_url_ending +
-                         '/attachment/' + image_id + '/</link>\n')
-                fo.write('          <pubDate>' + post_date_string + '</pubDate>\n')
-                fo.write('          <dc:creator><![CDATA[' + author + ']]></dc:creator>\n')
-                fo.write('          <guid isPermaLink="false">' + image_url + '</guid>\n')
-                fo.write('          <description/>\n')
-                fo.write('          <content:encoded><![CDATA[]]></content:encoded>\n')
-                fo.write('          <excerpt:encoded><![CDATA[' + image_caption + ']]></excerpt:encoded>\n')
-                fo.write('          <wp:post_id>' + image_id + '</wp:post_id>\n')
-                fo.write('          <wp:post_date>' + date_string_no_tz + '</wp:post_date>\n')
-                fo.write('          <wp:post_date_gmt>' + date_string_no_tz + '</wp:post_date_gmt>\n')
-                fo.write('          <wp:comment_status>closed</wp:comment_status>\n')
-                fo.write('          <wp:ping_status>closed</wp:ping_status>\n')
-                fo.write('          <wp:post_name></wp:post_name>\n')
-                fo.write('          <wp:status>inherit</wp:status>\n')
-                fo.write('          <wp:post_parent>' + post_id + '</wp:post_parent>\n')
-                fo.write('          <wp:menu_order>0</wp:menu_order>\n')
-                fo.write('          <wp:post_type>attachment</wp:post_type>\n')
-                fo.write('          <wp:post_password/>\n')
-                fo.write('          <wp:is_sticky>0</wp:is_sticky>\n')
-                fo.write('          <wp:attachment_url>' + image_url + '</wp:attachment_url>\n')
-                fo.write('          <wp:postmeta>\n')
-                fo.write('              <wp:meta_key><![CDATA[_wp_attached_file]]></wp:meta_key>\n')
-                fo.write('              <wp:meta_value><![CDATA[' + image_url_date +
-                         hacky_url_ending + ']]></wp:meta_value>\n')
-                fo.write('          </wp:postmeta>\n')
-                fo.write('        </item>\n\n\n')
-
-        fo.write('\n  </channel>\n')
-        fo.write('</rss>\n\n')
-        fo.close()
 
     def scrape_articles(self, article_list, screen=None):
         """

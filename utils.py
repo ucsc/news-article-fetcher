@@ -1,6 +1,71 @@
 import re
 import curses
+import urllib
+import cStringIO
 from unidecode import unidecode
+from PIL import Image
+
+
+class ArticleUtils:
+    """
+    This class provides functions to manipulate and reformat information scraped from
+    articles, like urls, category names, etc.
+    """
+    def __init__(self):
+        self.article_slug_regex = re.compile(r".*\/([^\/\.]+)(?:.[^\.\/]+$)*")
+        self.article_ending_regex = re.compile(r".*\/([^\/]+)")
+
+    def get_nicename(self, name):
+        """
+        Returns the nicename version of a string; converts to lowercase and replaces
+        spaces with dashes
+        :param name:
+        :return:
+        """
+        name = name.replace(' ', '-')
+        name = name.lower()
+
+        return name
+
+    def get_url_slug(self, page_url):
+        """
+        Returns the last section of a url eg. 'posts' for 'wordpress.com/posts.html'
+        :raises Exception: if the regex is unable to locate the url slug
+        :param page_url: the page url
+        :return: the url slug
+        """
+        slug_match = self.article_slug_regex.findall(page_url)
+        if slug_match and len(slug_match) == 1:
+            return slug_match[0]
+        else:
+            raise Exception("unable to find slug for article: " + page_url + "\n")
+
+    def get_url_ending(self, page_url):
+        """
+        Gets the url slug plus the file ending eg:
+        www.example.com/example.html -> example.html
+        :param page_url: the url to get the ending from
+        :return: the url ending
+        """
+        slug_match = self.article_ending_regex.findall(page_url)
+        if slug_match and len(slug_match) == 1:
+            return slug_match[0]
+        else:
+            raise Exception("unable to find ending for article: " + page_url + "\n")
+
+    def get_image_dimens(self, image_url):
+        """
+        Uses the PIL Pillow fork to get the width and height of an image from a url
+        :param image_url: the url of the image to get the dimensions for
+        :return: height, width
+        """
+        try:
+            url_connection = urllib.urlopen(image_url)
+            image_file = cStringIO.StringIO(url_connection.read())
+            im = Image.open(image_file)
+            return im.size
+        except IOError as e:
+            raise ImageException(image_url)
 
 
 class CommandLineDisplay(object):
