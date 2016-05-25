@@ -1,16 +1,17 @@
-from utils import GremlinZapper, CommandLineDisplay, ArticleUtils
-import bs4
-from bs4 import BeautifulSoup
-from unidecode import unidecode
-import re
 import datetime
-import requests
-import pprint
-from urlparse import urljoin
-from tidylib import tidy_fragment
 import os
+import re
 import time
 from email.utils import formatdate
+from urlparse import urljoin
+
+import bs4
+import requests
+from bs4 import BeautifulSoup
+from tidylib import tidy_fragment
+from unidecode import unidecode
+
+from utils import GremlinZapper, CommandLineDisplay, ArticleUtils
 
 
 class ContentNotHTMLException(Exception):
@@ -977,9 +978,11 @@ class NewsSiteScraper(object):
         :return:
         """
 
-        article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
+        # article_list = self.article_collector.get_articles(self.screen, start_month, start_year, end_month, end_year)
 
-        articles_dictionary = self.get_articles_dictionary()
+        articles_dictionary = self.get_articles_dictionary(start_month, start_year, end_month, end_year)
+
+        # print type(self.screen)
 
         print 'Writing Articles...'
 

@@ -1,7 +1,8 @@
-from article_scraper import NewsSiteScraper
 import argparse
-import re
 import datetime
+import re
+
+from article_scraper import NewsSiteScraper
 
 
 def parse_month_year(date_string):
