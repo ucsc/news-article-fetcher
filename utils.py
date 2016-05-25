@@ -5,6 +5,8 @@ import cStringIO
 from unidecode import unidecode
 from PIL import Image
 
+from exceptions import ImageException
+
 
 class ArticleUtils:
     """
