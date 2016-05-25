@@ -510,6 +510,7 @@ class ArticleWriter(object):
         fo.write('</rss>\n\n')
         fo.close()
 
+
 class ArticleScraper(object):
     """
     Takes a list of news.ucsc.edu articles, scrapes and writes them to files so that they can be used
