@@ -76,11 +76,11 @@ The classifier attempts to assign categories to articles (or any body of text) u
 ###Design
 By default, the classifier will automaticall download and use a training set consisting of categorized articles from news.ucsc.edu.  However, it is possible to use any collection of articles as a training set, as long as they are properly formatted with categories in metadata to allow the classifier to read them.  A properly formatted article looks like this:
 
----classification-training-metadata---
-category: Category One
-category: Category Two
----classification-training-metadata---
-article body...
+---classification-training-metadata---  
+category: Category One  
+category: Category Two  
+---classification-training-metadata---  
+article body...  
 
 Since articles may have many categories assigned to them, a simple Naive Bayes or Logistic Regression classifier will not suffice.  Instead, this classifier uses a modified one vs all (or one vs. rest) classifier to allow multilabel classification.  
 
