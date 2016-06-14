@@ -7,7 +7,6 @@ from PIL import Image
 
 from exceptions import ImageException
 
-
 class ArticleUtils:
     """
     This class provides functions to manipulate and reformat information scraped from
