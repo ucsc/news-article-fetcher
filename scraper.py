@@ -12,8 +12,30 @@ from tidylib import tidy_fragment
 from unidecode import unidecode
 
 from utils import GremlinZapper, CommandLineDisplay, ArticleUtils
-from exceptions import ContentNotHTMLException, NoDateException
 
+
+class ContentNotHTMLException(Exception):
+    """
+    Exception for when a url doesn't return html content
+    """
+    def __init__(self):
+        Exception.__init__(self, "Content type not text/html; charset=UTF-8")
+
+
+class NoDateException(Exception):
+    """
+    Exception for when an article doesn't contain a date
+    """
+    def __init__(self):
+        Exception.__init__(self, "Article does not contain a date")
+
+
+class BodyIsNoneException(Exception):
+    """
+    Exception for when an article doesn't contain a date
+    """
+    def __init__(self):
+        Exception.__init__(self, "Body is None")
 
 class ArticleCollector(object):
     """

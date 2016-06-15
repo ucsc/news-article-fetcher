@@ -5,7 +5,10 @@ import cStringIO
 from unidecode import unidecode
 from PIL import Image
 
-from exceptions import ImageException
+
+class ImageException(Exception):
+    def __init__(self, image_url):
+        Exception.__init__(self, "Error getting height and width of image " + image_url)
 
 class ArticleUtils:
     """

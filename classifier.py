@@ -1,12 +1,14 @@
-import pprint
 import os
-import datetime
 import re
-
+import numpy as np
+from time import time
 from scraper import NewsSiteScraper
-from utils import CommandLineDisplay
-
+from prettytable import PrettyTable
+from random import randint
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import LinearSVC
 
 
 class ArticleClassifier(object):
@@ -28,7 +30,11 @@ class ArticleClassifier(object):
         self.metadata_regex = re.compile(r"^---classification-training-metadata---$")
         self.category_regex = re.compile(r"^category: (.+)$")
 
-    def save_training_set(self, training_dictionary, path='training_articles/'):
+        self.vectorizer = TfidfVectorizer(ngram_range=(1, 5))
+        self.clf = OneVsRestClassifier(LinearSVC())
+
+    @staticmethod
+    def save_training_set(training_dictionary, path='training_articles/'):
         """
         Takes a dictionary of training articles and saves them to the directory
         indicated in the path. Creates the path of it doesn't exist.
@@ -44,11 +50,11 @@ class ArticleClassifier(object):
             os.makedirs(path)
 
         print 'Saving Training Set...'
-        for filename, article_dict in training_dictionary:
+        for filename, article_dict in training_dictionary.iteritems():
             categories = article_dict['categories']
-            article_body = article_dict['article_body']
+            article_body = article_dict['article_body'] or ''
 
-            fo = open(filename, "w")
+            fo = open(path + filename, "w")
 
             fo.write('---classification-training-metadata---\n')
             for category in categories:
@@ -103,17 +109,14 @@ class ArticleClassifier(object):
             print os.getcwd()
             return
 
+        num_no_categories = 0
+
         for root, subdirs, files in os.walk(training_set_path):
-            # print('--\nroot = ' + root)
 
             for filename in files:
                 file_path = os.path.join(root, filename)
-
-                # print('\t- file %s (full path: %s)' % (filename, file_path))
-
                 if reading_metadata is True:
                     exit()
-
                 article_dict = dict()
                 categories = []
 
@@ -125,22 +128,35 @@ class ArticleClassifier(object):
                         elif reading_metadata:
                             matches = self.category_regex.findall(line)
                             if matches:
-                                categories.append(matches[0])
+                                if matches[0] != 'Regular News' \
+                                        and matches[0] != 'Secondary Story' \
+                                        and matches[0] != 'Home Page':
+                                    categories.append(matches[0])
                         else:
                             article_body += line
 
                     article_dict['categories'] = categories
                     article_dict['article_body'] = article_body
 
-                    articles_dictionary[file_path] = article_dict
+                    if len(article_dict['categories']) > 0:
+                        articles_dictionary[file_path] = article_dict
+                    else:
+                        num_no_categories += 1
+        print "Number of articles with no categories (removed): " + str(num_no_categories)
         return articles_dictionary
 
-    def dictionary_to_xytrain(self, training_dictionary):
+    def dictionary_to_xytrain(self, training_dictionary, randomize=False):
         """
         Takes a dictionary of training articles and splits them up into xtrain and ytrain sets. Also returns
         a dictionary of indexes and their corresponding categories.
-        :param training_dictionary:
-        :return:
+        Parameters
+        ----------
+        training_dictionary
+        randomize
+
+        Returns
+        -------
+
         """
         cat_num = 0
 
@@ -166,13 +182,39 @@ class ArticleClassifier(object):
 
             categories_list.append(categories_sub_list)
 
-        ytrain = MultiLabelBinarizer().fit_transform(categories_list)
+        if randomize:
+            xtrain, ytrain = self.shuffle_xtrain_ytrain(xtrain, categories_list)
+
+        else:
+            ytrain = categories_list
+
+        ytrain = MultiLabelBinarizer().fit_transform(ytrain)
 
         inv_categories_dict = {v: k for k, v in categories_dict.items()}
 
         return xtrain, ytrain, inv_categories_dict
 
-    def slice_training_set(self, xtrain, ytrain, slice_start, slice_end):
+    @staticmethod
+    def dictionary_to_xtest(test_dictionary):
+        """
+        Takes a dictionary of articles and returns a list of article bodies and
+        a corresponding list of filenames, so they can be used to access the original dictionaries
+        :param test_dictionary:
+        :return:
+        """
+        xtest = []
+        filenames = []
+
+        for filename, article_dict in test_dictionary.iteritems():
+            article_body = article_dict['article_body_no_html']
+
+            xtest.append(article_body)
+            filenames.append(filename)
+
+        return xtest, filenames
+
+    @staticmethod
+    def slice_training_set(xtrain, ytrain, slice_start, slice_end):
         """
         Takes the x and y training lists, and slices them into two sets (4 total).  The list from the
         start index (inclusive) to the end index (exclusive) forms one of the new sets, and the other elements
@@ -187,14 +229,189 @@ class ArticleClassifier(object):
         inner_ytrain = ytrain[slice_start:slice_end]
 
         outer_xtrain = xtrain[:slice_start] + xtrain[slice_end:]
-        outer_ytrain = ytrain[:slice_start] + ytrain[slice_end:]
+        outer_ytrain = np.concatenate((ytrain[:slice_start], ytrain[slice_end:]))
 
         return inner_xtrain, inner_ytrain, outer_xtrain, outer_ytrain
 
-    def kfold_validation(self, k, training_dictionary):
+    @staticmethod
+    def shuffle_xtrain_ytrain(xtrain, ytrain):
         """
-        performs k fold validation on the given training set and prints the statistics.
-        :param k:
-        :param training_dictionary:
+        Shuffles Xtrain and Ytrain randomly and returns the scrambled versions
+        Parameters
+        :param xtrain:
+        :param ytrain:
         :return:
         """
+        new_xtrain = []
+        new_ytrain = []
+
+        while len(xtrain) > 0:
+            next_index = randint(0, len(xtrain) - 1)
+            new_xtrain.append(xtrain.pop(next_index))
+            new_ytrain.append(ytrain.pop(next_index))
+
+        return new_xtrain, new_ytrain
+
+    @staticmethod
+    def multilabel_confusion_matrix(y_true, y_pred, cutoff, class_labels=None):
+        """
+        Prints a confusion matrix consisting of True positives, False Positives, False Negatives, and
+        True negatives for each class
+        :param y_true:
+        :param y_pred:
+        :param cutoff:
+        :param class_labels:
+        :return:
+        """
+
+        # Initialize the confusion matrix
+
+        confusion_matrix = []
+
+        totals = [0, 0, 0, 0]
+
+        for index in xrange(len(y_true[0])):
+            confusion_matrix.append([0, 0, 0, 0])
+
+        for article_index in xrange(len(y_true)):
+            predicted_categories_list = y_pred[article_index]
+            for index in xrange(len(predicted_categories_list)):
+                if predicted_categories_list[index] >= cutoff:
+                    if y_true[article_index][index] == 1:
+                        # print "true positive"
+                        confusion_matrix[index][0] += 1
+                        totals[0] += 1
+                    else:
+                        # print "false positive"
+                        confusion_matrix[index][1] += 1
+                        totals[1] += 1
+                else:
+                    if y_true[article_index][index] == 1:
+                        # print "false negative"
+                        confusion_matrix[index][2] += 1
+                        totals[2] += 1
+                    else:
+                        # print "true negative"
+                        confusion_matrix[index][3] += 1
+                        totals[3] += 1
+
+        table = PrettyTable(['Labels', 'True Positives',
+                             'False Positives', 'False Negatives',
+                             'True Negatives', 'Precision',
+                             'Recall', 'F1'
+                             ])
+
+        total_precision = 0
+        precision_samples = 0
+        total_recall = 0
+        recall_samples = 0
+
+        for index in xrange(len(confusion_matrix)):
+
+            # Precision = True Positives / True Positives + False Positives
+            # Recall    = True Positives / True Positives + False Negatives
+
+            if confusion_matrix[index][1] == 0:
+                precision = 1
+            else:
+                precision = (confusion_matrix[index][0] + 0.0) / \
+                            (confusion_matrix[index][0] + confusion_matrix[index][1])
+
+            total_precision += precision
+            precision_samples += 1
+
+            if confusion_matrix[index][2] == 0:
+                recall = 1
+            else:
+                recall = (confusion_matrix[index][0] + 0.0) / \
+                         (confusion_matrix[index][0] + confusion_matrix[index][2])
+            total_recall += recall
+            recall_samples += 1
+
+            if precision + recall == 0:
+                f1_score = 0
+            else:
+                f1_score = 2 * ((precision * recall) / (precision + recall + 0.0))
+
+            if class_labels is None:
+                table.add_row([index, ] + confusion_matrix[index] + [precision, recall])
+            else:
+                table.add_row([class_labels[index], ] + confusion_matrix[index] + [precision, recall, f1_score])
+
+        macro_avg_precision = (total_precision + 0.0) / precision_samples
+        macro_avg_recall = (total_recall + 0.0) / recall_samples
+        macro_avg_f1 = 2 * ((macro_avg_precision * macro_avg_recall) / (macro_avg_precision + macro_avg_recall + 0.0))
+
+        table.add_row(['Macro Averaged Totals', ] + [str(i) for i in totals] +
+                      [str(macro_avg_precision), str(macro_avg_recall), str(macro_avg_f1)])
+
+        micro_avg_precision = (totals[0] + 0.0) / (totals[0] + totals[1])
+        micro_avg_recall = (totals[0] + 0.0) / (totals[0] + totals[2])
+        micro_avg_f1 = 2 * ((micro_avg_precision * micro_avg_recall) / (micro_avg_precision + micro_avg_recall + 0.0))
+
+        table.add_row(['Micro Averaged Totals', ] + [str(i) for i in totals] +
+                      [str(micro_avg_precision), str(micro_avg_recall), str(micro_avg_f1)])
+
+        print table
+
+    def kfold_validation(self, k, xtrain, ytrain, inv_categories_dict):
+        """
+
+        :param k:
+        :param xtrain:
+        :param ytrain:
+        :param inv_categories_dict:
+        :return:
+        """
+        slice_size = len(xtrain) / k
+
+        labels = []
+
+        # create a list of labels
+        for index in xrange(len(inv_categories_dict.keys())):
+            labels.append(inv_categories_dict[index])
+
+        print 'Starting {}-fold Cross Validation.'.format(k)
+        print 'Total sample size: {}. Slice Size: {}'.format(len(xtrain), slice_size)
+
+        for x in xrange(0, k):
+            slice_start = x * slice_size
+            slice_end = (x + 1) * slice_size
+            print 'Run {} of {}-fold Cross Validation'.format(x + 1, k)
+
+            inner_xtrain, inner_ytrain, outer_xtrain, outer_ytrain = \
+                self.slice_training_set(xtrain, ytrain, slice_start, slice_end)
+
+            self.fit(outer_xtrain, outer_ytrain)
+            predicted = self.predict(inner_xtrain)
+            print self.multilabel_confusion_matrix(inner_ytrain, predicted, 1, labels)
+
+        print '{}-fold Cross Validation Complete.'.format(k)
+
+    def fit(self, xtrain, ytrain):
+        """
+
+        :param xtrain:
+        :param ytrain:
+        :return:
+        """
+        x_train = self.vectorizer.fit_transform(xtrain)
+        print 'training classifier...'
+        t0 = time()
+        self.clf.fit(x_train, ytrain)
+        train_time = time() - t0
+        print("train time: %0.3fs" % train_time)
+
+    def predict(self, xtest):
+        """
+
+        :param xtest:
+        :return:
+        """
+        x_test = self.vectorizer.transform(xtest)
+        print 'predicting categories...'
+        t0 = time()
+        predicted = self.clf.predict(x_test)
+        predict_time = time() - t0
+        print("prediction time: %0.3fs" % predict_time)
+        return predicted
