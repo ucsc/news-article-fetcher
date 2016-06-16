@@ -15,6 +15,9 @@ np.set_printoptions(threshold=np.nan)
 
 
 class MLStripper(HTMLParser):
+    def error(self, message):
+        pass
+
     def __init__(self):
         self.reset()
         self.fed = []
