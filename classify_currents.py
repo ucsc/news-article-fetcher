@@ -32,7 +32,6 @@ def read_currents_test_data(test_set_path='test_articles/'):
     :param test_set_path:
     :return:
     """
-
     metadata_regex = re.compile(r"^---$")
     gzapper = GremlinZapper()
 
@@ -94,7 +93,6 @@ def setup_and_save_classifier():
     print "saving classifier"
     joblib.dump(cls, 'joblib/news-classifier.pkl')
     joblib.dump(inv_categories_dict, 'joblib/inv_categories_dict.pkl')
-
     return cls, inv_categories_dict
 
 
@@ -105,7 +103,6 @@ def load_classifier():
     inv_categories_dict = joblib.load('joblib/inv_categories_dict.pkl')
     load_time = time() - t0
     print("load time: %0.3fs" % load_time)
-
     return classifier, inv_categories_dict
 
 
@@ -118,7 +115,6 @@ def classify_articles_from_dictionary(test_articles_dictionary):
     :param ytrain:
     :return:
     """
-
     cls = None
     inv_categories_dict = None
 
@@ -137,7 +133,6 @@ def classify_articles_from_dictionary(test_articles_dictionary):
         predicted_categories_labels = []
         for index in xrange(len(inv_categories_dict.keys())):
             if predicted_categories_list[index] > 0:
-                # print inv_categories_dict[index]
                 predicted_categories_labels.append(inv_categories_dict[index])
         test_articles_dictionary[filenames[article_index]]['categories'] = predicted_categories_labels
 
@@ -148,6 +143,13 @@ def strip_tags(html):
     s = MLStripper()
     s.feed(html)
     return s.get_data()
+
+if os.path.exists('categorized_articles/'):
+    if not os.path.isdir('categorized_articles/'):
+        print 'Path is not a directory, unable to save'
+        exit()
+else:
+    os.makedirs('categorized_articles/')
 
 cls = ArticleClassifier()
 utils = ArticleUtils()
@@ -162,12 +164,6 @@ if os.path.exists('categorized_articles/'):
         exit()
 else:
     os.makedirs('categorized_articles/')
-
-"""
-for filename, article_dict in results_dict.iteritems():
-    print "filename: " + str(filename)
-    print "categories: " + str(article_dict['categories'])
-"""
 
 for filename, article_dict in results_dict.iteritems():
     categories = article_dict['categories']

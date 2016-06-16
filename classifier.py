@@ -30,11 +30,10 @@ class ArticleClassifier(object):
         self.metadata_regex = re.compile(r"^---classification-training-metadata---$")
         self.category_regex = re.compile(r"^category: (.+)$")
 
-        self.vectorizer = TfidfVectorizer(ngram_range=(1, 5))
+        self.vectorizer = TfidfVectorizer(ngram_range=(1, 2))
         self.clf = OneVsRestClassifier(LinearSVC())
 
-    @staticmethod
-    def save_training_set(training_dictionary, path='training_articles/'):
+    def save_training_set(self, training_dictionary, path='training_articles/'):
         """
         Takes a dictionary of training articles and saves them to the directory
         indicated in the path. Creates the path of it doesn't exist.
@@ -75,7 +74,6 @@ class ArticleClassifier(object):
         base_folder = 'training_articles/'
         articles_dictionary = self.article_scraper.get_articles_dictionary()
         training_dictionary = dict()
-        print "Writing Training Articles..."
 
         if not os.path.exists(base_folder):
             os.makedirs(base_folder)
@@ -105,9 +103,8 @@ class ArticleClassifier(object):
         Will add functionality to request downloading the news.ucsc.edu training set
         """
         if not os.path.exists(training_set_path):
-            print training_set_path + "path does not exist"
-            print os.getcwd()
-            return
+            training_dictionary = self.download_training_set()
+            self.save_training_set(training_dictionary, training_set_path)
 
         num_no_categories = 0
 
@@ -194,8 +191,7 @@ class ArticleClassifier(object):
 
         return xtrain, ytrain, inv_categories_dict
 
-    @staticmethod
-    def dictionary_to_xtest(test_dictionary):
+    def dictionary_to_xtest(self, test_dictionary):
         """
         Takes a dictionary of articles and returns a list of article bodies and
         a corresponding list of filenames, so they can be used to access the original dictionaries
@@ -213,8 +209,7 @@ class ArticleClassifier(object):
 
         return xtest, filenames
 
-    @staticmethod
-    def slice_training_set(xtrain, ytrain, slice_start, slice_end):
+    def slice_training_set(self, xtrain, ytrain, slice_start, slice_end):
         """
         Takes the x and y training lists, and slices them into two sets (4 total).  The list from the
         start index (inclusive) to the end index (exclusive) forms one of the new sets, and the other elements
@@ -233,8 +228,7 @@ class ArticleClassifier(object):
 
         return inner_xtrain, inner_ytrain, outer_xtrain, outer_ytrain
 
-    @staticmethod
-    def shuffle_xtrain_ytrain(xtrain, ytrain):
+    def shuffle_xtrain_ytrain(self, xtrain, ytrain):
         """
         Shuffles Xtrain and Ytrain randomly and returns the scrambled versions
         Parameters
@@ -252,8 +246,7 @@ class ArticleClassifier(object):
 
         return new_xtrain, new_ytrain
 
-    @staticmethod
-    def multilabel_confusion_matrix(y_true, y_pred, cutoff, class_labels=None):
+    def multilabel_confusion_matrix(self, y_true, y_pred, cutoff, class_labels=None):
         """
         Prints a confusion matrix consisting of True positives, False Positives, False Negatives, and
         True negatives for each class
