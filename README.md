@@ -2,9 +2,9 @@
 Set of tools to manipulate data from the news.ucsc.edu site
 
 
-##The Scraper
+## The Scraper
 
-###Usage
+### Usage
 
 usage: newsparser.py [-h] [-s START_DATE_STRING] [-e END_DATE_STRING]
                      [-i START_INDEX] [--markdown]
